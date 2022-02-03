@@ -1,6 +1,7 @@
-import logging
+import sys
+import signal
 import requests
-from queue import Queue
+import uuid
 from xml.etree.ElementTree import VERSION
 from datetime import datetime
 from cachetools import TTLCache
@@ -20,9 +21,7 @@ class Kable:
 
     def __init__(self, config):
 
-        self.log = logging.getLogger("kable")
-
-        self.log.info("Initializing Kable")
+        print("Initializing Kable")
 
         if config is None:
             raise RuntimeError(
@@ -53,7 +52,7 @@ class Kable:
         self.queueFlushTimer = None
         self.queueFlushMaxCount = 20 # 20 requests
         self.queueFlushMaxPoller = None
-        self.queue = Queue(1000) # leaving extra room in case client gets a flurry of requests -- I don't want to cause a memory issue, queue will block at 1000
+        self.queue = []
 
         self.validCache = TTLCache(maxsize=1000, ttl=30)
         self.invalidCache = TTLCache(maxsize=1000, ttl=30)
@@ -61,7 +60,8 @@ class Kable:
 
         self.kableEnvironment = "live" if self.environment == "live" else "test"
 
-        url = "http://localhost:8080/api/authenticate"
+        url = f"https://${self.kableEnvironment}.kableapi.com/api/authenticate"
+        # url = "http://localhost:8080/api/authenticate"
         headers = {
             KABLE_ENVIRONMENT_HEADER_KEY: self.environment,
             KABLE_CLIENT_ID_HEADER_KEY: self.kableClientId,
@@ -76,15 +76,20 @@ class Kable:
                 self.startFlushQueueOnTimer()
                 self.startFlushQueueIfFullTimer()
 
-                self.log.info("Kable initialized successfully")
+                self.kill = False
+                signal.signal(signal.SIGINT, self.exitGracefully)
+                signal.signal(signal.SIGTERM, self.exitGracefully)
+
+                print("Kable initialized successfully")
+
+            elif status == 401:
+                print("Failed to initialize Kable: Unauthorized")
 
             else:
-                if status == 401:
-                    self.log.error("Failed to initialize Kable: Unauthorized")
-                else:
-                    self.log.error("Failed to initialize Kable: Something went wrong")
-        except:
-            self.log.error("Failed to initialize Kable: Something went wrong")
+                print("Failed to initialize Kable: Something went wrong")
+
+        except Exception as e:
+            print("Failed to initialize Kable: Something went wrong")
 
 
 
@@ -96,7 +101,7 @@ class Kable:
             clientId = headers[X_CLIENT_ID_HEADER_KEY] if X_CLIENT_ID_HEADER_KEY in headers else None
             secretKey = headers[X_API_KEY_HEADER_KEY] if X_API_KEY_HEADER_KEY in headers else None
             # TODO: generate this uuid
-            requestId = "GENERATE A UUID"
+            requestId = str(uuid.uuid4())
 
             self.enqueueMessage(clientId, requestId, request)
 
@@ -108,15 +113,16 @@ class Kable:
 
 
             if secretKey in self.validCache:
-                self.log.debug("Valid Cache Hit")
+                print("Valid Cache Hit")
                 return api(*args)
 
             if secretKey in self.invalidCache:
-                self.log.debug("Invalid Cache Hit")
+                print("Invalid Cache Hit")
                 abort(401, {"message": "Unauthorized"})
 
-            self.log.debug("Authenticating at server")
-            url = "http://localhost:8080/api/authenticate"
+            print("Authenticating at server")
+            url = f"https://${self.kableEnvironment}.kableapi.com/api/authenticate"
+            # url = "http://localhost:8080/api/authenticate"
             headers = {
                 KABLE_ENVIRONMENT_HEADER_KEY: self.environment,
                 KABLE_CLIENT_ID_HEADER_KEY: self.kableClientId,
@@ -135,10 +141,10 @@ class Kable:
                         self.invalidCache.__setitem__(secretKey, clientId)
                         abort(401, {"message": "Unauthorized"})
                     else:
-                        self.log.warn("Unexpected " + status + " response from Kable authenticate. Please update your SDK to the latest version immediately")
+                        print("Unexpected " + status + " response from Kable authenticate. Please update your SDK to the latest version immediately")
                         abort(500, {"message": "Something went wrong"})
 
-            except:
+            except Exception as e:
                 abort(500, {"message": "Something went wrong"})
 
         return decoratedApi
@@ -149,7 +155,7 @@ class Kable:
         message = {}
         message['library'] = 'kable-python'
         message['library_version'] = VERSION
-        message['created'] = datetime.utcnow()
+        message['created'] = datetime.utcnow().isoformat()
         message['request_id'] = requestId
 
         message['environment'] = self.environment
@@ -163,78 +169,74 @@ class Kable:
         # body
         message['request'] = request
 
-        self.queue.put(message)
-
+        self.queue.append(message)
 
 
     def flushQueue(self):
         if self.queueFlushTimer is not None:
-            self.log.debug('Stopping time-based queue poller')
+            print('Stopping time-based queue poller')
             self.queueFlushTimer.cancel()
             self.queueFlushTimer = None
 
         if self.queueFlushMaxPoller is not None:
-            self.log.debug('Stopping size-based queue poller')
+            print('Stopping size-based queue poller')
             self.queueFlushMaxPoller.cancel()
             self.queueFlushMaxPoller = None
 
-        self.log.debug('Sending batched requests to server (approximately ' + str(self.queue.qsize()) + ' requests)')
-        self.queue.join()
-        self.log.debug('Finished sending requests to server')
+        messages = self.queue
+        self.queue = []
+        count = len(messages)
+        print(messages)
+        if (count > 0):
+            print(f'Sending {count} batched requests to server')
 
-        self.startFlushQueueOnTimer()
-        self.startFlushQueueIfFullTimer()
+            url = f"https://${self.kableEnvironment}.kableapi.com/api/requests"
+            # url = "http://localhost:8080/api/requests"
+            headers = {
+                KABLE_ENVIRONMENT_HEADER_KEY: self.environment,
+                KABLE_CLIENT_ID_HEADER_KEY: self.kableClientId,
+                X_CLIENT_ID_HEADER_KEY: self.kableClientId,
+                X_API_KEY_HEADER_KEY: self.kableClientSecret
+            }
+            try:
+                # payload = json.dumps(messages)
+                response = requests.post(url=url, headers=headers, json=messages)
+                print(response)
+                status = response.status_code
+                if (status == 200):
+                    print(f'Successfully sent {count} messages to Kable server')
+                else:
+                    print(f'Failed to send {count} messages to Kable server')
 
+            except Exception as e:
+                print(e)
+                print(f'Failed to send {count} messages to Kable server')
+        else:
+            print('...no messages to flush...')
+
+        if self.kill:
+            sys.exit(0)
+        else:
+            self.startFlushQueueOnTimer()
+            self.startFlushQueueIfFullTimer()
 
 
     def startFlushQueueOnTimer(self):
-        self.log.debug('Starting time-based queue poller')
+        print('Starting time-based queue poller')
         self.queueFlushTimer = Timer(self.queueFlushInterval, self.flushQueue).start()
 
 
-
     def startFlushQueueIfFullTimer(self):
-        self.log.debug('Starting size-based queue poller')
+        print('Starting size-based queue poller')
         self.queueMaxPoller = Timer(1, self.flushQueueIfFull).start()
 
 
-
     def flushQueueIfFull(self):
-        if self.queue.qsize() >= self.queueFlushMaxCount:
+        messages = self.queue
+        if len(messages) >= self.queueFlushMaxCount:
             self.flushQueue()
 
 
-
-
-
-
-
-
-# # def decorator(*args, **kwargs):
-# def decorator(fn):
-
-#     print("inside the decorator")
-
-#     @wraps(fn)
-#     def decorated_function(*args, **kwargs):
-#         # config = kwargs["config"]
-#         print("BEFORE FUNCTION RUNS")
-
-#         print("api execution")
-#         print(args)
-#         print(kwargs)
-#         # print("Arguments passed to decorator are " + config["greeting"])
-
-#         print("AFTER FUNCTION RUNS")
-
-#     return decorated_function
-
-
-# # @decorator(config = {"greeting": "hello"})
-# @decorator
-# def fn(request):
-#     print("Inner function, where request is " + request)
-
-
-# x = fn("hi")
-# print(x)
+    def exitGracefully(self, *args):
+        self.kill = True
+        self.flushQueue()
