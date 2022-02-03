@@ -59,7 +59,7 @@ class Kable:
 
         self.kableEnvironment = "live" if self.environment == "live" else "test"
 
-        url = f"https://${self.kableEnvironment}.kableapi.com/api/authenticate"
+        url = f"https://{self.kableEnvironment}.kableapi.com/api/authenticate"
         # url = "http://localhost:8080/api/authenticate"
         headers = {
             KABLE_ENVIRONMENT_HEADER_KEY: self.environment,
@@ -85,7 +85,7 @@ class Kable:
                 print("Failed to initialize Kable: Unauthorized")
 
             else:
-                print("Failed to initialize Kable: Something went wrong")
+                print(f"Failed to initialize Kable: Something went wrong [{status}]")
 
         except Exception as e:
             print("Failed to initialize Kable: Something went wrong")
@@ -119,7 +119,7 @@ class Kable:
 
             # print("Authenticating at server")
 
-            url = f"https://${self.kableEnvironment}.kableapi.com/api/authenticate"
+            url = f"https://{self.kableEnvironment}.kableapi.com/api/authenticate"
             # url = "http://localhost:8080/api/authenticate"
             headers = {
                 KABLE_ENVIRONMENT_HEADER_KEY: self.environment,
@@ -185,7 +185,7 @@ class Kable:
         if (count > 0):
             # print(f'Sending {count} batched requests to server')
 
-            url = f"https://${self.kableEnvironment}.kableapi.com/api/requests"
+            url = f"https://{self.kableEnvironment}.kableapi.com/api/requests"
             # url = "http://localhost:8080/api/requests"
             headers = {
                 KABLE_ENVIRONMENT_HEADER_KEY: self.environment,
