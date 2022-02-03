@@ -1,4 +1,4 @@
-# Kable Python SDK
+# Kable Python Flask SDK
 
 Welcome to **[Kable](https://dev.kableapi.com)**! Kable is the best solution for API products to manage authentication, permissions, and billing.
 
