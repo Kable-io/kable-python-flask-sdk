@@ -113,14 +113,15 @@ class Kable:
 
 
             if secretKey in self.validCache:
-                print("Valid Cache Hit")
+                # print("Valid Cache Hit")
                 return api(*args)
 
             if secretKey in self.invalidCache:
-                print("Invalid Cache Hit")
+                # print("Invalid Cache Hit")
                 abort(401, {"message": "Unauthorized"})
 
-            print("Authenticating at server")
+            # print("Authenticating at server")
+
             url = f"https://${self.kableEnvironment}.kableapi.com/api/authenticate"
             # url = "http://localhost:8080/api/authenticate"
             headers = {
@@ -174,21 +175,20 @@ class Kable:
 
     def flushQueue(self):
         if self.queueFlushTimer is not None:
-            print('Stopping time-based queue poller')
+            # print('Stopping time-based queue poller')
             self.queueFlushTimer.cancel()
             self.queueFlushTimer = None
 
         if self.queueFlushMaxPoller is not None:
-            print('Stopping size-based queue poller')
+            # print('Stopping size-based queue poller')
             self.queueFlushMaxPoller.cancel()
             self.queueFlushMaxPoller = None
 
         messages = self.queue
         self.queue = []
         count = len(messages)
-        print(messages)
         if (count > 0):
-            print(f'Sending {count} batched requests to server')
+            # print(f'Sending {count} batched requests to server')
 
             url = f"https://${self.kableEnvironment}.kableapi.com/api/requests"
             # url = "http://localhost:8080/api/requests"
@@ -199,9 +199,7 @@ class Kable:
                 X_API_KEY_HEADER_KEY: self.kableClientSecret
             }
             try:
-                # payload = json.dumps(messages)
                 response = requests.post(url=url, headers=headers, json=messages)
-                print(response)
                 status = response.status_code
                 if (status == 200):
                     print(f'Successfully sent {count} messages to Kable server')
@@ -209,10 +207,9 @@ class Kable:
                     print(f'Failed to send {count} messages to Kable server')
 
             except Exception as e:
-                print(e)
                 print(f'Failed to send {count} messages to Kable server')
-        else:
-            print('...no messages to flush...')
+        # else:
+        #     print('...no messages to flush...')
 
         if self.kill:
             sys.exit(0)
@@ -222,12 +219,12 @@ class Kable:
 
 
     def startFlushQueueOnTimer(self):
-        print('Starting time-based queue poller')
+        # print('Starting time-based queue poller')
         self.queueFlushTimer = Timer(self.queueFlushInterval, self.flushQueue).start()
 
 
     def startFlushQueueIfFullTimer(self):
-        print('Starting size-based queue poller')
+        # print('Starting size-based queue poller')
         self.queueMaxPoller = Timer(1, self.flushQueueIfFull).start()
 
 
@@ -238,5 +235,10 @@ class Kable:
 
 
     def exitGracefully(self, *args):
+        print(f'Kable will shut down gracefully within {self.queueFlushInterval} seconds')
         self.kill = True
         self.flushQueue()
+
+
+def configure(config):
+    return Kable(config)
