@@ -76,8 +76,11 @@ class Kable:
                 self.startFlushQueueIfFullTimer()
 
                 self.kill = False
-                signal.signal(signal.SIGINT, self.exitGracefully)
-                signal.signal(signal.SIGTERM, self.exitGracefully)
+                try:
+                    signal.signal(signal.SIGINT, self.exitGracefully)
+                    signal.signal(signal.SIGTERM, self.exitGracefully)
+                except:
+                    print("")
 
                 print("Kable initialized successfully")
 
@@ -230,8 +233,7 @@ class Kable:
             self.flushQueue()
 
     def exitGracefully(self, *args):
-        print(
-            f'Kable will shut down gracefully within {self.queueFlushInterval} seconds')
+        print(f'Kable will shut down gracefully within {self.queueFlushInterval} seconds')
         self.kill = True
         self.flushQueue()
 
