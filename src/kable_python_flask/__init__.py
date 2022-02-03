@@ -31,22 +31,22 @@ class Kable:
             raise RuntimeError(
                 'Failed to initialize Kable: environment not provided')
 
-        if "clientId" not in config:
+        if "client_id" not in config:
             raise RuntimeError(
-                'Failed to initialize Kable: clientId not provided')
+                'Failed to initialize Kable: client_id not provided')
 
-        if "clientSecret" not in config:
+        if "client_secret" not in config:
             raise RuntimeError(
-                'Failed to initialize Kable: clientSecret not provided')
+                'Failed to initialize Kable: client_secret not provided')
 
-        if "baseUrl" not in config:
+        if "base_url" not in config:
             raise RuntimeError(
-                'Failed to initialize Kable: baseUrl not provided')
+                'Failed to initialize Kable: base_url not provided')
 
         self.environment = config["environment"]
-        self.kableClientId = config["clientId"]
-        self.kableClientSecret = config["clientSecret"]
-        self.baseUrl = config["baseUrl"]
+        self.kableClientId = config["client_id"]
+        self.kableClientSecret = config["client_secret"]
+        self.baseUrl = config["base_url"]
 
         self.queueFlushInterval = 10  # 10 seconds
         self.queueFlushTimer = None
@@ -110,7 +110,7 @@ class Kable:
                 abort(401, {"message": "Unauthorized"})
 
             if secretKey in self.validCache:
-                # print("Valid Cache Hit")
+                # response.headers[X_REQUEST_ID_HEADER_KEY] = requestId
                 return api(*args)
 
             if secretKey in self.invalidCache:
@@ -133,6 +133,7 @@ class Kable:
                 status = response.status_code
                 if (status == 200):
                     self.validCache.__setitem__(secretKey, clientId)
+                    # response.headers[X_REQUEST_ID_HEADER_KEY] = requestId
                     return api(*args)
                 else:
                     if status == 401:
@@ -150,14 +151,14 @@ class Kable:
 
     def enqueueMessage(self, clientId, requestId, req):
         message = {}
-        message['library'] = 'kable-python'
-        message['library_version'] = VERSION
+        message['library'] = 'kable-python-flask'
+        message['libraryVersion'] = VERSION
         message['created'] = datetime.utcnow().isoformat()
-        message['request_id'] = requestId
+        message['requestId'] = requestId
 
         message['environment'] = self.environment
-        message['kable_client_id'] = self.kableClientId
-        message['client_id'] = clientId
+        message['kableClientId'] = self.kableClientId
+        message['clientId'] = clientId
 
         request = {}
         request['url'] = req.url
