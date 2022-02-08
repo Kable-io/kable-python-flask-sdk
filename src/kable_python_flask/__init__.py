@@ -14,6 +14,7 @@ KABLE_ENVIRONMENT_HEADER_KEY = 'KABLE-ENVIRONMENT'
 KABLE_CLIENT_ID_HEADER_KEY = 'KABLE-CLIENT-ID'
 X_CLIENT_ID_HEADER_KEY = 'X-CLIENT-ID'
 X_API_KEY_HEADER_KEY = 'X-API-KEY'
+X_USER_ID_KEY = 'X-USER-ID'
 X_REQUEST_ID_HEADER_KEY = 'X-REQUEST-ID'
 
 
@@ -162,6 +163,9 @@ class Kable:
         message['environment'] = self.environment
         message['kableClientId'] = self.kableClientId
         message['clientId'] = clientId
+        xUserId = req.headers[X_USER_ID_KEY] if X_USER_ID_KEY in req.headers else None
+        if xUserId is not None:
+            message['userId'] = xUserId
 
         request = {}
         request['url'] = req.url
