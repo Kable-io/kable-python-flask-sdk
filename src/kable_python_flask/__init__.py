@@ -7,7 +7,7 @@ from datetime import datetime
 from cachetools import TTLCache
 from functools import wraps
 from threading import Timer
-from flask import request, abort
+from flask import request, jsonify
 
 
 KABLE_ENVIRONMENT_HEADER_KEY = 'KABLE-ENVIRONMENT'
@@ -107,19 +107,20 @@ class Kable:
             self.enqueueMessage(clientId, requestId, request)
 
             if self.environment is None or self.kableClientId is None:
-                abort(500, {
-                      "message": "Unauthorized. Failed to initialize Kable: Configuration invalid"})
+                return jsonify({"message": "Unauthorized. Failed to initialize Kable: Configuration invalid"}), 500
 
             if clientId is None or secretKey is None:
-                abort(401, {"message": "Unauthorized"})
+                return jsonify({"message": "Unauthorized"}), 401
 
             if secretKey in self.validCache:
-                # response.headers[X_REQUEST_ID_HEADER_KEY] = requestId
-                return api(*args)
+                if self.validCache[secretKey] is clientId:
+                    # response.headers[X_REQUEST_ID_HEADER_KEY] = requestId
+                    return api(*args)
 
             if secretKey in self.invalidCache:
-                # print("Invalid Cache Hit")
-                abort(401, {"message": "Unauthorized"})
+                if self.invalidCache[secretKey] is clientId:
+                    # print("Invalid Cache Hit")
+                    return jsonify({"message": "Unauthorized"}), 401
 
             # print("Authenticating at server")
 
@@ -142,14 +143,14 @@ class Kable:
                 else:
                     if status == 401:
                         self.invalidCache.__setitem__(secretKey, clientId)
-                        abort(401, {"message": "Unauthorized"})
+                        return jsonify({"message": "Unauthorized"}), 401
                     else:
                         print("Unexpected " + status +
                               " response from Kable authenticate. Please update your SDK to the latest version immediately")
-                        abort(500, {"message": "Something went wrong"})
+                        return jsonify({"message": "Something went wrong"}), 500
 
             except Exception as e:
-                abort(500, {"message": "Something went wrong"})
+                return jsonify({"message": "Something went wrong"}), 500
 
         return decoratedApi
 
