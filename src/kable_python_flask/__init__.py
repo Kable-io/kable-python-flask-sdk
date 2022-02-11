@@ -1,7 +1,6 @@
 import sys
 import signal
 import requests
-import uuid
 from xml.etree.ElementTree import VERSION
 from datetime import datetime
 from cachetools import TTLCache
@@ -12,6 +11,7 @@ from flask import request, jsonify
 
 KABLE_ENVIRONMENT_HEADER_KEY = 'KABLE-ENVIRONMENT'
 KABLE_CLIENT_ID_HEADER_KEY = 'KABLE-CLIENT-ID'
+KABLE_CLIENT_SECRET_HEADER_KEY = 'KABLE-CLIENT-SECRET'
 X_CLIENT_ID_HEADER_KEY = 'X-CLIENT-ID'
 X_API_KEY_HEADER_KEY = 'X-API-KEY'
 X_USER_ID_KEY = 'X-USER-ID'
@@ -49,6 +49,12 @@ class Kable:
         self.kableClientSecret = config["client_secret"]
         self.baseUrl = config["base_url"]
 
+        if "debug" in config:
+            self.debug = config["debug"]
+            print("Starting Kable with debug enabled")
+        else:
+            self.debug = False
+
         self.queueFlushInterval = 10  # 10 seconds
         self.queueFlushTimer = None
         self.queueFlushMaxCount = 20  # 20 requests
@@ -58,15 +64,13 @@ class Kable:
         self.validCache = TTLCache(maxsize=1000, ttl=30)
         self.invalidCache = TTLCache(maxsize=1000, ttl=30)
 
-        self.kableEnvironment = "live" if self.environment == "live" else "test"
-
-        url = f"https://{self.kableEnvironment}.kableapi.com/api/authenticate"
-        # url = "http://localhost:8080/api/authenticate"
+        url = f"{self.baseUrl}/api/authenticate"
         headers = {
             KABLE_ENVIRONMENT_HEADER_KEY: self.environment,
             KABLE_CLIENT_ID_HEADER_KEY: self.kableClientId,
             X_CLIENT_ID_HEADER_KEY: self.kableClientId,
             X_API_KEY_HEADER_KEY: self.kableClientSecret,
+            KABLE_CLIENT_SECRET_HEADER_KEY: self.kableClientSecret,
         }
 
         try:
@@ -97,14 +101,16 @@ class Kable:
     def authenticate(self, api):
         @wraps(api)
         def decoratedApi(*args, **kwargs):
+
+            if (self.debug):
+                print("Received request to authenticate")
+
             headers = request.headers
 
             clientId = headers[X_CLIENT_ID_HEADER_KEY] if X_CLIENT_ID_HEADER_KEY in headers else None
             secretKey = headers[X_API_KEY_HEADER_KEY] if X_API_KEY_HEADER_KEY in headers else None
-            # TODO: generate this uuid
-            requestId = str(uuid.uuid4())
 
-            self.enqueueMessage(clientId, requestId, request)
+            self.enqueueMessage(clientId)
 
             if self.environment is None or self.kableClientId is None:
                 return jsonify({"message": "Unauthorized. Failed to initialize Kable: Configuration invalid"}), 500
@@ -113,32 +119,32 @@ class Kable:
                 return jsonify({"message": "Unauthorized"}), 401
 
             if secretKey in self.validCache:
-                if self.validCache[secretKey] is clientId:
-                    # response.headers[X_REQUEST_ID_HEADER_KEY] = requestId
+                if self.validCache[secretKey] == clientId:
+                    if self.debug:
+                        print("Valid Cache Hit")
                     return api(*args)
 
             if secretKey in self.invalidCache:
-                if self.invalidCache[secretKey] is clientId:
-                    # print("Invalid Cache Hit")
+                if self.invalidCache[secretKey] == clientId:
+                    if self.debug:
+                        print("Invalid Cache Hit")
                     return jsonify({"message": "Unauthorized"}), 401
 
-            # print("Authenticating at server")
+            if self.debug:
+                print("Authenticating at server")
 
-            url = f"https://{self.kableEnvironment}.kableapi.com/api/authenticate"
-            # url = "http://localhost:8080/api/authenticate"
+            url = f"{self.baseUrl}/api/authenticate"
             headers = {
                 KABLE_ENVIRONMENT_HEADER_KEY: self.environment,
                 KABLE_CLIENT_ID_HEADER_KEY: self.kableClientId,
                 X_CLIENT_ID_HEADER_KEY: clientId,
                 X_API_KEY_HEADER_KEY: secretKey,
-                X_REQUEST_ID_HEADER_KEY: requestId
             }
             try:
                 response = requests.post(url=url, headers=headers)
                 status = response.status_code
                 if (status == 200):
                     self.validCache.__setitem__(secretKey, clientId)
-                    # response.headers[X_REQUEST_ID_HEADER_KEY] = requestId
                     return api(*args)
                 else:
                     if status == 401:
@@ -154,30 +160,28 @@ class Kable:
 
         return decoratedApi
 
-    def enqueueMessage(self, clientId, requestId, req):
-        message = {}
-        message['library'] = 'kable-python-flask'
-        message['libraryVersion'] = VERSION
-        message['created'] = datetime.utcnow().isoformat()
-        message['requestId'] = requestId
+    def enqueueMessage(self, clientId):
+        event = {}
+        event['environment'] = self.environment
+        event['kableClientId'] = self.kableClientId
+        event['customerId'] = clientId
+        event['timestamp'] = datetime.utcnow().isoformat()
 
-        message['environment'] = self.environment
-        message['kableClientId'] = self.kableClientId
-        message['clientId'] = clientId
-        xUserId = req.headers[X_USER_ID_KEY] if X_USER_ID_KEY in req.headers else None
-        if xUserId is not None:
-            message['userId'] = xUserId
+        event['data'] = {}
 
-        request = {}
-        request['url'] = req.url
-        request['method'] = req.method
-        # headers
-        # body
-        message['request'] = request
+        library = {}
+        library['name'] = 'kable-python-flask'
+        library['version'] = VERSION
 
-        self.queue.append(message)
+        event['library'] = library
+
+        self.queue.append(event)
+
 
     def flushQueue(self):
+        if self.debug:
+            print("Flushing Kable event queue...")
+
         if self.queueFlushTimer is not None:
             # print('Stopping time-based queue poller')
             self.queueFlushTimer.cancel()
@@ -188,14 +192,14 @@ class Kable:
             self.queueFlushMaxPoller.cancel()
             self.queueFlushMaxPoller = None
 
-        messages = self.queue
+        events = self.queue
         self.queue = []
-        count = len(messages)
+        count = len(events)
         if (count > 0):
-            # print(f'Sending {count} batched requests to server')
+            if self.debug:
+                print(f'Sending {count} batched events to server')
 
-            url = f"https://{self.kableEnvironment}.kableapi.com/api/requests"
-            # url = "http://localhost:8080/api/requests"
+            url = f"{self.baseUrl}/api/events"
             headers = {
                 KABLE_ENVIRONMENT_HEADER_KEY: self.environment,
                 KABLE_CLIENT_ID_HEADER_KEY: self.kableClientId,
@@ -204,18 +208,19 @@ class Kable:
             }
             try:
                 response = requests.post(
-                    url=url, headers=headers, json=messages)
+                    url=url, headers=headers, json=events)
                 status = response.status_code
                 if (status == 200):
                     print(
-                        f'Successfully sent {count} messages to Kable server')
+                        f'Successfully sent {count} events to Kable server')
                 else:
-                    print(f'Failed to send {count} messages to Kable server')
+                    print(f'Failed to send {count} events to Kable server')
 
             except Exception as e:
-                print(f'Failed to send {count} messages to Kable server')
-        # else:
-        #     print('...no messages to flush...')
+                print(f'Failed to send {count} events to Kable server')
+        else:
+            if self.debug:
+                print('...no Kable events to flush...')
 
         if self.kill:
             sys.exit(0)
@@ -224,17 +229,21 @@ class Kable:
             self.startFlushQueueIfFullTimer()
 
     def startFlushQueueOnTimer(self):
-        # print('Starting time-based queue poller')
+        if self.debug:
+            print('Starting time-based queue poller')
+
         self.queueFlushTimer = Timer(
             self.queueFlushInterval, self.flushQueue).start()
 
     def startFlushQueueIfFullTimer(self):
-        # print('Starting size-based queue poller')
+        if self.debug:
+            print('Starting size-based queue poller')
+
         self.queueMaxPoller = Timer(1, self.flushQueueIfFull).start()
 
     def flushQueueIfFull(self):
-        messages = self.queue
-        if len(messages) >= self.queueFlushMaxCount:
+        events = self.queue
+        if len(events) >= self.queueFlushMaxCount:
             self.flushQueue()
 
     def exitGracefully(self, *args):
