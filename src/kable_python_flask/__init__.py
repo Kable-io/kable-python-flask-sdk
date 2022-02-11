@@ -15,7 +15,6 @@ KABLE_CLIENT_SECRET_HEADER_KEY = 'KABLE-CLIENT-SECRET'
 X_CLIENT_ID_HEADER_KEY = 'X-CLIENT-ID'
 X_API_KEY_HEADER_KEY = 'X-API-KEY'
 X_USER_ID_KEY = 'X-USER-ID'
-X_REQUEST_ID_HEADER_KEY = 'X-REQUEST-ID'
 
 
 class Kable:
@@ -93,10 +92,43 @@ class Kable:
                 print("Failed to initialize Kable: Unauthorized")
 
             else:
-                print(f"Failed to initialize Kable: Something went wrong [{status}]")
+                print(
+                    f"Failed to initialize Kable: Something went wrong [{status}]")
 
         except Exception as e:
             print("Failed to initialize Kable: Something went wrong")
+
+    def record(self, data):
+        if (self.debug):
+            print("Received data to record")
+
+        clientId = None
+        if 'clientId' in data:
+            clientId = data['clientId']
+            del data['clientId']
+
+        customerId = None
+        if 'customerId' in data:
+            customerId = data['customerId']
+            del data['customerId']
+
+        self.enqueueMessage(clientId=clientId,
+                            customerId=customerId, data=data)
+
+    def recordRequest(self, api):
+        @wraps(api)
+        def decoratedApi(*args, **kwargs):
+            if (self.debug):
+                print("Received request to record")
+
+            headers = request.headers
+            clientId = headers[X_CLIENT_ID_HEADER_KEY] if X_CLIENT_ID_HEADER_KEY in headers else None
+
+            self.enqueueMessage(clientId, None, {})
+
+            return api(*args)
+
+        return decoratedApi
 
     def authenticate(self, api):
         @wraps(api)
@@ -106,11 +138,10 @@ class Kable:
                 print("Received request to authenticate")
 
             headers = request.headers
-
             clientId = headers[X_CLIENT_ID_HEADER_KEY] if X_CLIENT_ID_HEADER_KEY in headers else None
             secretKey = headers[X_API_KEY_HEADER_KEY] if X_API_KEY_HEADER_KEY in headers else None
 
-            self.enqueueMessage(clientId)
+            self.enqueueMessage(clientId, None, {})
 
             if self.environment is None or self.kableClientId is None:
                 return jsonify({"message": "Unauthorized. Failed to initialize Kable: Configuration invalid"}), 500
@@ -160,14 +191,15 @@ class Kable:
 
         return decoratedApi
 
-    def enqueueMessage(self, clientId):
+    def enqueueMessage(self, clientId, customerId, data):
         event = {}
         event['environment'] = self.environment
         event['kableClientId'] = self.kableClientId
         event['clientId'] = clientId
+        event['customerId'] = customerId
         event['timestamp'] = datetime.utcnow().isoformat()
 
-        event['data'] = {}
+        event['data'] = data
 
         library = {}
         library['name'] = 'kable-python-flask'
@@ -176,7 +208,6 @@ class Kable:
         event['library'] = library
 
         self.queue.append(event)
-
 
     def flushQueue(self):
         if self.debug:
@@ -247,10 +278,7 @@ class Kable:
             self.flushQueue()
 
     def exitGracefully(self, *args):
-        print(f'Kable will shut down gracefully within {self.queueFlushInterval} seconds')
+        print(
+            f'Kable will shut down gracefully within {self.queueFlushInterval} seconds')
         self.kill = True
         self.flushQueue()
-
-
-def configure(config):
-    return Kable(config)
