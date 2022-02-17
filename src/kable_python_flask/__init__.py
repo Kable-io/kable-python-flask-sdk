@@ -55,11 +55,11 @@ class Kable:
         else:
             self.debug = False
 
-        if "recordAuthentication" in config:
-            self.recordAuthentication = config["recordAuthentication"]
+        if "record_authentication" in config:
+            self.recordAuthentication = config["record_authentication"]
             if self.recordAuthentication is False:
                 print(
-                    "Starting Kable with recordAuthentication disabled, authentication requests will not be recorded")
+                    "Starting Kable with record_authentication disabled, authentication requests will not be recorded")
         else:
             self.recordAuthentication = True
 
