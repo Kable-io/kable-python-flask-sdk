@@ -50,13 +50,22 @@ class Kable:
 
         if "debug" in config:
             self.debug = config["debug"]
-            print("Starting Kable with debug enabled")
+            if self.debug:
+                print("Starting Kable with debug enabled")
         else:
             self.debug = False
 
+        if "recordAuthentication" in config:
+            self.recordAuthentication = config["recordAuthentication"]
+            if self.recordAuthentication is False:
+                print(
+                    "Starting Kable with recordAuthentication disabled, authentication requests will not be recorded")
+        else:
+            self.recordAuthentication = True
+
         self.queueFlushInterval = 10  # 10 seconds
         self.queueFlushTimer = None
-        self.queueFlushMaxCount = 20  # 20 requests
+        self.queueFlushMaxCount = 10  # 10 requests
         self.queueFlushMaxPoller = None
         self.queue = []
 
@@ -136,7 +145,8 @@ class Kable:
                 if self.validCache[secretKey] == clientId:
                     if self.debug:
                         print("Valid Cache Hit")
-                    self.enqueueMessage(clientId, None, {})
+                    if self.recordAuthentication:
+                        self.enqueueMessage(clientId, None, {})
                     return api(*args)
 
             if secretKey in self.invalidCache:
@@ -160,7 +170,8 @@ class Kable:
                 status = response.status_code
                 if (status == 200):
                     self.validCache.__setitem__(secretKey, clientId)
-                    self.enqueueMessage(clientId, None, {})
+                    if self.recordAuthentication:
+                        self.enqueueMessage(clientId, None, {})
                     return api(*args)
                 else:
                     if status == 401:
