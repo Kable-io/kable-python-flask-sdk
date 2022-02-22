@@ -55,6 +55,13 @@ class Kable:
         else:
             self.debug = False
 
+        if "disable_cache" in config:
+            self.disableCache = config["disable_cache"]
+            if self.disableCache:
+                print("Starting Kable with disable_cache enabled")
+        else:
+            self.disableCache = False
+
         if "record_authentication" in config:
             self.recordAuthentication = config["record_authentication"]
             if self.recordAuthentication is False:
@@ -204,6 +211,8 @@ class Kable:
         event['library'] = library
 
         self.queue.append(event)
+        if self.disableCache:
+            self.flushQueue()
 
     def flushQueue(self):
         if self.debug:
