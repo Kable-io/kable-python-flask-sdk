@@ -1,7 +1,6 @@
 import sys
 import signal
 import requests
-from xml.etree.ElementTree import VERSION
 from datetime import datetime
 from cachetools import TTLCache
 from functools import wraps
@@ -78,7 +77,7 @@ class Kable:
 
         self.queueFlushInterval = 10  # 10 seconds
         self.queueFlushTimer = None
-        self.queueFlushMaxPoller = None
+        # self.queueFlushMaxPoller = None
         self.queue = []
 
         self.validCache = TTLCache(maxsize=1000, ttl=30)
@@ -211,7 +210,7 @@ class Kable:
 
         library = {}
         library['name'] = 'kable-python-flask'
-        library['version'] = VERSION
+        library['version'] = '2.3.6'
 
         event['library'] = library
 
@@ -228,10 +227,10 @@ class Kable:
             self.queueFlushTimer.cancel()
             self.queueFlushTimer = None
 
-        if self.queueFlushMaxPoller is not None:
-            # print('Stopping size-based queue poller')
-            self.queueFlushMaxPoller.cancel()
-            self.queueFlushMaxPoller = None
+        # if self.queueFlushMaxPoller is not None:
+        #     # print('Stopping size-based queue poller')
+        #     self.queueFlushMaxPoller.cancel()
+        #     self.queueFlushMaxPoller = None
 
         events = self.queue
         self.queue = []
@@ -256,6 +255,8 @@ class Kable:
                         f'Successfully sent {count} events to Kable server')
                 else:
                     print(f'Failed to send {count} events to Kable server')
+                    for event in events:
+                        print(f'Kable Event (Error): {event}')
 
             except Exception as e:
                 print(f'Failed to send {count} events to Kable server')
