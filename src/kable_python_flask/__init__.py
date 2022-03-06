@@ -55,12 +55,18 @@ class Kable:
         else:
             self.debug = False
 
-        if "disable_cache" in config:
-            self.disableCache = config["disable_cache"]
-            if self.disableCache:
-                print("Starting Kable with disable_cache enabled")
+        if "max_queue_size" in config:
+            self.maxQueueSize = config["max_queue_size"]
+            if self.maxQueueSize > 100:
+                self.maxQueueSize = 100
         else:
-            self.disableCache = False
+            self.maxQueueSize = 10  # flush after 10 requests queued
+
+        if "disable_cache" in config:
+            disableCache = config["disable_cache"]
+            if disableCache:
+                self.maxQueueSize = 1
+        print("Starting Kable with max_queue_size " + str(self.maxQueueSize))
 
         if "record_authentication" in config:
             self.recordAuthentication = config["record_authentication"]
@@ -72,7 +78,6 @@ class Kable:
 
         self.queueFlushInterval = 10  # 10 seconds
         self.queueFlushTimer = None
-        self.queueFlushMaxCount = 10  # 10 requests
         self.queueFlushMaxPoller = None
         self.queue = []
 
@@ -91,9 +96,9 @@ class Kable:
         try:
             response = requests.post(url=url, headers=headers)
             status = response.status_code
-            if (status == 200):
+            if status == 200:
                 self.startFlushQueueOnTimer()
-                self.startFlushQueueIfFullTimer()
+                # self.startFlushQueueIfFullTimer()
 
                 self.kill = False
                 try:
@@ -115,7 +120,7 @@ class Kable:
             print("Failed to initialize Kable: Something went wrong")
 
     def record(self, data):
-        if (self.debug):
+        if self.debug:
             print("Received data to record")
 
         clientId = None
@@ -135,7 +140,7 @@ class Kable:
         @wraps(api)
         def decoratedApi(*args, **kwargs):
 
-            if (self.debug):
+            if self.debug:
                 print("Received request to authenticate")
 
             headers = request.headers
@@ -175,7 +180,7 @@ class Kable:
             try:
                 response = requests.post(url=url, headers=headers)
                 status = response.status_code
-                if (status == 200):
+                if status == 200:
                     self.validCache.__setitem__(secretKey, clientId)
                     if self.recordAuthentication:
                         self.enqueueMessage(clientId, None, {})
@@ -211,7 +216,7 @@ class Kable:
         event['library'] = library
 
         self.queue.append(event)
-        if self.disableCache:
+        if len(self.queue) >= self.maxQueueSize:
             self.flushQueue()
 
     def flushQueue(self):
@@ -231,7 +236,7 @@ class Kable:
         events = self.queue
         self.queue = []
         count = len(events)
-        if (count > 0):
+        if count > 0:
             if self.debug:
                 print(f'Sending {count} batched events to server')
 
@@ -246,7 +251,7 @@ class Kable:
                 response = requests.post(
                     url=url, headers=headers, json=events)
                 status = response.status_code
-                if (status == 200):
+                if status == 200:
                     print(
                         f'Successfully sent {count} events to Kable server')
                 else:
@@ -262,7 +267,7 @@ class Kable:
             sys.exit(0)
         else:
             self.startFlushQueueOnTimer()
-            self.startFlushQueueIfFullTimer()
+            # self.startFlushQueueIfFullTimer()
 
     def startFlushQueueOnTimer(self):
         if self.debug:
@@ -271,16 +276,16 @@ class Kable:
         self.queueFlushTimer = Timer(
             self.queueFlushInterval, self.flushQueue).start()
 
-    def startFlushQueueIfFullTimer(self):
-        if self.debug:
-            print('Starting size-based queue poller')
+    # def startFlushQueueIfFullTimer(self):
+    #     if self.debug:
+    #         print('Starting size-based queue poller')
 
-        self.queueMaxPoller = Timer(1, self.flushQueueIfFull).start()
+    #     self.queueMaxPoller = Timer(1, self.flushQueueIfFull).start()
 
-    def flushQueueIfFull(self):
-        events = self.queue
-        if len(events) >= self.queueFlushMaxCount:
-            self.flushQueue()
+    # def flushQueueIfFull(self):
+    #     events = self.queue
+    #     if len(events) >= self.maxQueueSize:
+    #         self.flushQueue()
 
     def exitGracefully(self, *args):
         print(
