@@ -4,7 +4,7 @@ import requests
 from datetime import datetime
 from cachetools import TTLCache
 from functools import wraps
-from threading import Timer
+from threading import Event, Thread
 from flask import request, jsonify
 
 
@@ -77,7 +77,6 @@ class Kable:
 
         self.queueFlushInterval = 10  # 10 seconds
         self.queueFlushTimer = None
-        # self.queueFlushMaxPoller = None
         self.queue = []
 
         self.validCache = TTLCache(maxsize=1000, ttl=30)
@@ -97,9 +96,7 @@ class Kable:
             status = response.status_code
             if status == 200:
                 self.startFlushQueueOnTimer()
-                # self.startFlushQueueIfFullTimer()
 
-                self.kill = False
                 try:
                     signal.signal(signal.SIGINT, self.exitGracefully)
                     signal.signal(signal.SIGTERM, self.exitGracefully)
@@ -222,16 +219,6 @@ class Kable:
         if self.debug:
             print("Flushing Kable event queue...")
 
-        if self.queueFlushTimer is not None:
-            # print('Stopping time-based queue poller')
-            self.queueFlushTimer.cancel()
-            self.queueFlushTimer = None
-
-        # if self.queueFlushMaxPoller is not None:
-        #     # print('Stopping size-based queue poller')
-        #     self.queueFlushMaxPoller.cancel()
-        #     self.queueFlushMaxPoller = None
-
         events = self.queue
         self.queue = []
         count = len(events)
@@ -260,36 +247,34 @@ class Kable:
 
             except Exception as e:
                 print(f'Failed to send {count} events to Kable server')
+                for event in events:
+                    print(f'Kable Event (Error): {event}')
+
         else:
             if self.debug:
                 print('...no Kable events to flush...')
-
-        if self.kill:
-            sys.exit(0)
-        else:
-            self.startFlushQueueOnTimer()
-            # self.startFlushQueueIfFullTimer()
 
     def startFlushQueueOnTimer(self):
         if self.debug:
             print('Starting time-based queue poller')
 
-        self.queueFlushTimer = Timer(
-            self.queueFlushInterval, self.flushQueue).start()
-
-    # def startFlushQueueIfFullTimer(self):
-    #     if self.debug:
-    #         print('Starting size-based queue poller')
-
-    #     self.queueMaxPoller = Timer(1, self.flushQueueIfFull).start()
-
-    # def flushQueueIfFull(self):
-    #     events = self.queue
-    #     if len(events) >= self.maxQueueSize:
-    #         self.flushQueue()
+        self.killFlag = Event()
+        self.queueFlushTimer = Kable.FlushTimer(self, self.killFlag)
+        self.queueFlushTimer.start()
 
     def exitGracefully(self, *args):
         print(
             f'Kable will shut down gracefully within {self.queueFlushInterval} seconds')
-        self.kill = True
         self.flushQueue()
+        self.killFlag.set()
+        sys.exit(0)
+
+    class FlushTimer(Thread):
+        def __init__(self, outer, killFlag):
+            Thread.__init__(self)
+            self.outer = outer
+            self.stopped = killFlag
+
+        def run(self):
+            while not self.stopped.wait(10):
+                self.outer.flushQueue()
