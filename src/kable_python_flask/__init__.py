@@ -101,8 +101,8 @@ class Kable:
                 try:
                     signal.signal(signal.SIGINT, self.exitGracefully)
                     signal.signal(signal.SIGTERM, self.exitGracefully)
-                except:
-                    print("")
+                except Exception as e:
+                    print(e)
 
                 print("[KABLE] Kable initialized successfully")
 
@@ -114,6 +114,7 @@ class Kable:
                     f"[KABLE] Failed to initialize Kable: Something went wrong [{status}]")
 
         except Exception as e:
+            print(e)
             print("[KABLE] Failed to initialize Kable: Something went wrong")
 
     def record(self, data):
@@ -156,7 +157,7 @@ class Kable:
                         print("[KABLE] Valid Cache Hit")
                     if self.recordAuthentication:
                         self.enqueueMessage(clientId, None, {})
-                    return api(*args)
+                    return api(*args, **kwargs)
 
             if secretKey in self.invalidCache:
                 if self.invalidCache[secretKey] == clientId:
@@ -181,7 +182,7 @@ class Kable:
                     self.validCache.__setitem__(secretKey, clientId)
                     if self.recordAuthentication:
                         self.enqueueMessage(clientId, None, {})
-                    return api(*args)
+                    return api(*args, **kwargs)
                 else:
                     if status == 401:
                         self.invalidCache.__setitem__(secretKey, clientId)
@@ -192,6 +193,7 @@ class Kable:
                         return jsonify({"message": "Something went wrong"}), 500
 
             except Exception as e:
+                print(e)
                 return jsonify({"message": "Something went wrong"}), 500
 
         return decoratedApi
@@ -248,6 +250,7 @@ class Kable:
                         print(f'[KABLE] Kable Event (Error): {event}')
 
             except Exception as e:
+                print(e)
                 print(f'Failed to send {count} events to Kable server')
                 for event in events:
                     print(f'[KABLE] Kable Event (Error): {event}')
