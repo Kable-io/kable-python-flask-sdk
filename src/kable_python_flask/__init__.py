@@ -20,7 +20,7 @@ class Kable:
 
     def __init__(self, config):
 
-        print("Initializing Kable")
+        print("[KABLE] Initializing Kable")
 
         if config is None:
             raise RuntimeError(
@@ -166,7 +166,7 @@ class Kable:
                     return jsonify({"message": "Unauthorized"}), 401
 
             if self.debug:
-                print("Authenticating at server")
+                print("[KABLE] Authenticating at server")
 
             url = f"{self.baseUrl}/api/authenticate"
             headers = {
@@ -229,7 +229,7 @@ class Kable:
             if self.debug:
                 print(f'[KABLE] Sending {count} batched events to server')
 
-            url = f"{self.baseUrl}/api/events"
+            url = f"{self.baseUrl}/api/events/create"
             headers = {
                 KABLE_ENVIRONMENT_HEADER_KEY: self.environment,
                 KABLE_CLIENT_ID_HEADER_KEY: self.kableClientId,
@@ -251,7 +251,7 @@ class Kable:
 
             except Exception as e:
                 print(e)
-                print(f'Failed to send {count} events to Kable server')
+                print(f'[KABLE] Failed to send {count} events to Kable server')
                 for event in events:
                     print(f'[KABLE] Kable Event (Error): {event}')
 
