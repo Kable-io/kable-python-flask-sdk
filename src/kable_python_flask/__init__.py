@@ -8,7 +8,6 @@ from threading import Timer
 from flask import request, jsonify
 
 
-KABLE_ENVIRONMENT_HEADER_KEY = 'KABLE-ENVIRONMENT'
 KABLE_CLIENT_ID_HEADER_KEY = 'KABLE-CLIENT-ID'
 KABLE_CLIENT_SECRET_HEADER_KEY = 'KABLE-CLIENT-SECRET'
 X_CLIENT_ID_HEADER_KEY = 'X-CLIENT-ID'
@@ -26,25 +25,20 @@ class Kable:
             raise RuntimeError(
                 "[KABLE] Failed to initialize Kable: config not provided")
 
-        if "environment" not in config:
+        if "kable_client_id" not in config:
             raise RuntimeError(
-                '[KABLE] Failed to initialize Kable: environment not provided')
+                '[KABLE] Failed to initialize Kable: kable_client_id not provided')
 
-        if "client_id" not in config:
+        if "kable_client_secret" not in config:
             raise RuntimeError(
-                '[KABLE] Failed to initialize Kable: client_id not provided')
-
-        if "client_secret" not in config:
-            raise RuntimeError(
-                '[KABLE] Failed to initialize Kable: client_secret not provided')
+                '[KABLE] Failed to initialize Kable: kable_client_secret not provided')
 
         if "base_url" not in config:
             raise RuntimeError(
                 '[KABLE] Failed to initialize Kable: base_url not provided')
 
-        self.environment = config["environment"]
-        self.kableClientId = config["client_id"]
-        self.kableClientSecret = config["client_secret"]
+        self.kableClientId = config["kable_client_id"]
+        self.kableClientSecret = config["kable_client_secret"]
         self.baseUrl = config["base_url"]
 
         if "debug" in config:
@@ -56,8 +50,8 @@ class Kable:
 
         if "max_queue_size" in config:
             self.maxQueueSize = config["max_queue_size"]
-            if self.maxQueueSize > 100:
-                self.maxQueueSize = 100
+            if self.maxQueueSize > 500:
+                self.maxQueueSize = 500
         else:
             self.maxQueueSize = 10  # flush after 10 requests queued
 
@@ -85,7 +79,6 @@ class Kable:
 
         url = f"{self.baseUrl}/api/authenticate"
         headers = {
-            KABLE_ENVIRONMENT_HEADER_KEY: self.environment,
             KABLE_CLIENT_ID_HEADER_KEY: self.kableClientId,
             X_CLIENT_ID_HEADER_KEY: self.kableClientId,
             X_API_KEY_HEADER_KEY: self.kableClientSecret,
@@ -126,13 +119,7 @@ class Kable:
             clientId = data['clientId']
             del data['clientId']
 
-        customerId = None
-        if 'customerId' in data:
-            customerId = data['customerId']
-            del data['customerId']
-
-        self.enqueueMessage(clientId=clientId,
-                            customerId=customerId, data=data)
+        self.enqueueEvent(clientId=clientId, data=data)
 
     def authenticate(self, api):
         @wraps(api)
@@ -145,7 +132,7 @@ class Kable:
             clientId = headers[X_CLIENT_ID_HEADER_KEY] if X_CLIENT_ID_HEADER_KEY in headers else None
             secretKey = headers[X_API_KEY_HEADER_KEY] if X_API_KEY_HEADER_KEY in headers else None
 
-            if self.environment is None or self.kableClientId is None:
+            if self.baseUrl is None or self.kableClientId is None:
                 return jsonify({"message": "Unauthorized. Failed to initialize Kable: Configuration invalid"}), 500
 
             if clientId is None or secretKey is None:
@@ -156,7 +143,7 @@ class Kable:
                     if self.debug:
                         print("[KABLE] Valid Cache Hit")
                     if self.recordAuthentication:
-                        self.enqueueMessage(clientId, None, {})
+                        self.enqueueEvent(clientId, {})
                     return api(*args, **kwargs)
 
             if secretKey in self.invalidCache:
@@ -170,7 +157,6 @@ class Kable:
 
             url = f"{self.baseUrl}/api/authenticate"
             headers = {
-                KABLE_ENVIRONMENT_HEADER_KEY: self.environment,
                 KABLE_CLIENT_ID_HEADER_KEY: self.kableClientId,
                 X_CLIENT_ID_HEADER_KEY: clientId,
                 X_API_KEY_HEADER_KEY: secretKey,
@@ -181,7 +167,7 @@ class Kable:
                 if status == 200:
                     self.validCache.__setitem__(secretKey, clientId)
                     if self.recordAuthentication:
-                        self.enqueueMessage(clientId, None, {})
+                        self.enqueueEvent(clientId, {})
                     return api(*args, **kwargs)
                 else:
                     if status == 401:
@@ -198,19 +184,17 @@ class Kable:
 
         return decoratedApi
 
-    def enqueueMessage(self, clientId, customerId, data):
+    def enqueueEvent(self, clientId, data):
         event = {}
-        event['environment'] = self.environment
         event['kableClientId'] = self.kableClientId
         event['clientId'] = clientId
-        event['customerId'] = customerId
         event['timestamp'] = datetime.utcnow().isoformat()
 
         event['data'] = data
 
         library = {}
         library['name'] = 'kable-python-flask'
-        library['version'] = '2.4.1'
+        library['version'] = '2.5.1'
 
         event['library'] = library
 
@@ -231,14 +215,11 @@ class Kable:
 
             url = f"{self.baseUrl}/api/events/create"
             headers = {
-                KABLE_ENVIRONMENT_HEADER_KEY: self.environment,
                 KABLE_CLIENT_ID_HEADER_KEY: self.kableClientId,
-                X_CLIENT_ID_HEADER_KEY: self.kableClientId,
-                X_API_KEY_HEADER_KEY: self.kableClientSecret
+                KABLE_CLIENT_SECRET_HEADER_KEY: self.kableClientSecret,
             }
             try:
-                response = requests.post(
-                    url=url, headers=headers, json=events)
+                response = requests.post(url=url, headers=headers, json=events)
                 status = response.status_code
                 if status == 200:
                     print(
