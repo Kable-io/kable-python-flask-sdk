@@ -1,5 +1,6 @@
 import sys
 import signal
+from uuid import uuid4
 import requests
 from datetime import datetime
 from cachetools import TTLCache
@@ -110,16 +111,12 @@ class Kable:
             print(e)
             print("[KABLE] Failed to initialize Kable: Something went wrong")
 
-    def record(self, data):
+    def record(self, clientId: str, data, transactionId: str = str(uuid4())):
         if self.debug:
             print("[KABLE] Received data to record")
 
-        clientId = None
-        if 'clientId' in data:
-            clientId = data['clientId']
-            del data['clientId']
-
-        self.enqueueEvent(clientId=clientId, data=data)
+        self.enqueueEvent(clientId=clientId, data=data,
+                          transactionId=transactionId)
 
     def authenticate(self, api):
         @wraps(api)
@@ -184,17 +181,18 @@ class Kable:
 
         return decoratedApi
 
-    def enqueueEvent(self, clientId, data):
+    def enqueueEvent(self, clientId: str, data, transactionId: str):
         event = {}
         event['kableClientId'] = self.kableClientId
         event['clientId'] = clientId
         event['timestamp'] = datetime.utcnow().isoformat()
+        event['transactionId'] = transactionId
 
         event['data'] = data
 
         library = {}
         library['name'] = 'kable-python-flask'
-        library['version'] = '3.0.0'
+        library['version'] = '4.0.0'
 
         event['library'] = library
 
