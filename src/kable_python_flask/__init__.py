@@ -112,6 +112,14 @@ class Kable:
             print("[KABLE] Failed to initialize Kable: Something went wrong")
 
     def record(self, clientId: str, data, transactionId: str = None):
+        """
+        Record a usage event.
+
+        :param clientId: The clientId of the customer to whom this event should be attributed.
+        :param data: Event data to record.
+        :param transactionId: A unique identifier for this event used as an idempotency key. (If not provided, a UUID will be auto-generated.)
+        """
+
         if self.debug:
             print("[KABLE] Received data to record")
 
