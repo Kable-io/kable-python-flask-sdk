@@ -111,9 +111,12 @@ class Kable:
             print(e)
             print("[KABLE] Failed to initialize Kable: Something went wrong")
 
-    def record(self, clientId: str, data, transactionId: str = str(uuid4())):
+    def record(self, clientId: str, data, transactionId: str = None):
         if self.debug:
             print("[KABLE] Received data to record")
+
+        if transactionId is None:
+            transactionId = str(uuid4())
 
         self.enqueueEvent(clientId=clientId, data=data,
                           transactionId=transactionId)
@@ -192,7 +195,7 @@ class Kable:
 
         library = {}
         library['name'] = 'kable-python-flask'
-        library['version'] = '4.0.0'
+        library['version'] = '4.0.1'
 
         event['library'] = library
 
